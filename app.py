@@ -68,8 +68,8 @@ def credit_user():
     data = request.json
     account_number = data.get('account_number')
     amount = data.get('amount')
-    
-    acct_no = Account.query.get(account_number)
+    acct_no = Account.query.filter_by(account_number=account_number).first()
+
     if acct_no:
         acct_no.balance += amount
         bank_app_db.session.commit()
@@ -87,12 +87,31 @@ def debit_user():
     account_number = data.get('account_number')
     amount = data.get('amount')
     
-    acct_no = Account.query.get(account_number)
+    acct_no = Account.query.filter_by(account_number=account_number).first()
     if acct_no:
         if acct_no.balance >= amount:
             acct_no.balance -= amount
             bank_app_db.session.commit()
-            return jsonify({'balance': acct_no.balance})
+
+            # Saving transaction record after every successful transaction
+            account_id = acct_no.id
+            customer_id = acct_no.customer_id
+            transaction_type = 'DEBIT'
+            current_time = datetime.now()
+            transaction_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
+
+            # TODO: Implement a transaction description in the future
+
+            new_transaction = Transaction(customer_id=customer_id, account_id=account_id, type=transaction_type, date=transaction_time, amount=amount)
+            bank_app_db.session.add(new_transaction)
+            bank_app_db.session.commit()
+
+            return jsonify({
+
+                'balance': acct_no.balance,
+                'message': f"Account number {account_number} was successfully debited with {amount}"
+
+                })
         else:
             return jsonify({'message': 'Insufficient funds'})
     else:
@@ -130,13 +149,17 @@ def get_accounts():
     accounts = Account.query.all()
     account_list = []
     for account in accounts:
+        customer_id = account.customer_id
+        customer_name = Customer.query.filter_by(id=customer_id).first().username
+
         account_data = {
+            'customer_name': customer_name,
             'account_id': account.id,
             'account_number': account.account_number,
             'balance': account.balance
         }
         account_list.append(account_data)
-    return jsonify({'customers': account_list})
+    return jsonify({'customer_accounts': account_list})
 
 # Endpoint to get all transactions of a given account_number/account_id in an array format
 @app.route('/api/transactions/<account_identifier>', methods=['GET'])
@@ -181,7 +204,7 @@ def get_account_by_customer_id(customer_id):
             account_data = {
                 'id': account.id,
                 'account_number': account.account_number,
-                'customer_id': account.customer_id,
+                'account_id': account.customer_id,
                 'balance': account.balance
             }
             account_list.append(account_data)
